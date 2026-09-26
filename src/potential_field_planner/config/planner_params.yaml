@@ -1,0 +1,46 @@
+astar_global_planner:
+  ros__parameters:
+    base_frame: base_link
+    global_frame: map
+    robot_radius: 0.30       # planning radius: Robile is 0.47 m wide, so doors >= ~0.7 m are passable
+    safety_margin: 0.35      # paths prefer to stay this much further from walls
+    wall_cost_weight: 5.0
+    waypoint_spacing: 0.4
+    unknown_is_free: false
+    max_snap_dist: 0.6
+    use_laser_obstacles: true     # replan around obstacles that are not in the map
+    new_obstacle_min_dist: 0.3    # laser points closer than this to a mapped wall are ignored
+    check_path_blocked: false     # also replan pre-emptively every second (needs very good localisation)
+
+potential_field_planner:
+  ros__parameters:
+    base_frame: base_link
+    global_frame: map
+    rate: 20.0
+    waypoint_tolerance: 0.30
+    goal_tolerance: 0.10
+    yaw_tolerance: 0.10
+    align_final_yaw: true
+    k_att: 1.0
+    k_rep: 0.5
+    max_rep_ratio: 0.8      # repulsion capped at this fraction of attraction
+    k_tan: 1.0              # sideways push around obstacles (escapes local minima)
+    holonomic_final_approach: true  # slide onto the goal for the last metres (Robile is omni)
+    collision_margin: 0.04    # predicted clearance below this blocks a motion (incl. turning)
+    final_approach_dist: 0.5
+    final_approach_speed: 0.15
+    influence_dist: 0.8
+    max_lin: 0.25
+    max_ang: 0.5               # rad/s; faster turns make odometry slip and confuse SLAM
+    k_ang: 1.5
+    max_lin_acc: 0.5
+    max_ang_acc: 2.0
+    robot_half_length: 0.35
+    robot_half_width: 0.24
+    stop_dist: 0.15
+    slow_dist: 0.50
+    scan_timeout: 0.5
+    tf_timeout: 0.5
+    stuck_timeout: 8.0
+    stuck_progress: 0.15
+    max_replans: 3
