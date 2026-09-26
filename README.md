@@ -1,103 +1,117 @@
+# AMR Project – Robile Navigation, Localisation and Exploration
 
-# AMR FINAL PROJECT
+Project for the Autonomous Mobile Robots course (SS26). Everything here runs on the real Robile and in simulation.
 
+The project has three parts:
 
-## Important Information
+1. **Path and motion planning** – an A* global planner that produces waypoints, and a potential field controller that drives between them while avoiding obstacles.
+2. **Localisation** – our own Monte Carlo localisation (particle filter), used instead of Nav2 AMCL.
+3. **Exploration** – frontier-based exploration on top of slam_toolbox, so the robot maps an unknown room by itself.
 
-| Item | Details |
-|------|---------|
-| Assignment Release | 1 July 2026 |
-| Due Date | **28 September 2026, 23:59 CET** |
-| Repository Visibility | Public |
-| Team Size | 3–4 students |
-| Submission | Prepare a report with the format explained in class and Submit the GitHub repository URL on LEA |
+The full write-up is in [docs/AMR_Project_Report.pdf](docs/AMR_Project_Report.pdf).
 
+## Team
 
-# Getting Started
+- Mohammad Moeed Ahsan – path and motion planning
+- Anurag Tiwari – localisation
+- Haider Qaizar Hussain – exploration and report
 
-## Step 1
+## Approach
 
-Click **Use this template** (green button at the top of this page).
+**Path and motion planning.** A* runs on the occupancy grid with obstacles inflated by 0.30 m and an extra cost near walls, so paths stay in the middle of corridors. The path is thinned to waypoints ~0.4 m apart. The potential field follows them: unit attraction to the current waypoint, repulsion from laser points around the robot outline (capped below the attraction so it can steer but never cancel the goal), plus a sideways component that lets the robot slide around obstacles instead of getting stuck in front of them. For the last 0.5 m the Robile drives holonomically onto the goal. Every command is checked against the laser for collisions over the next half second before it is sent.
 
-## Step 2
+**Localisation.** Standard MCL from the lecture: 500 particles, odometry motion model with four noise parameters, likelihood-field sensor model on 60 beams, low-variance resampling when the effective particle count drops below half. It publishes `map -> odom` like AMCL, so the rest of the stack does not care which one runs. Global localisation spreads 3000 particles over the free space and only shrinks the set once they agree on one place.
 
-Create a new repository using the following naming convention:
+**Exploration.** slam_toolbox builds the map. The explorer finds frontier cells (free next to unknown), groups them, and for each group looks for a reachable goal within 1 m that has enough room to turn. The cost is travel distance minus twice the frontier length, so bigger unexplored areas are preferred. Visited and failed goals are not picked again (failed ones get one retry at the end). When nothing reachable is left the map is saved.
 
-```
-amr-team-<team_name>
-```
-
-Replace '<team_name>' with your desired team name.
-
-## Step 3
-
-Set the repository visibility to **Public** and create the repository.
-
-## Step 4
-
-Invite your team members as collaborators to the repository.
+## Repository layout
 
 ```
-Settings
-    ↓
-Collaborators
-    ↓
-Add people
+src/potential_field_planner/     ROS 2 package with all our nodes
+  potential_field_planner/
+    astar_global_planner.py      A* on the occupancy grid, publishes /global_path
+    potential_field.py           waypoint follower (potential field), publishes /cmd_vel
+    mcl_localization.py          particle filter, publishes map->odom TF
+    frontier_explorer.py         picks frontier goals on the SLAM map
+    scan_utils.py                laser -> robot frame projection (handles flipped lasers)
+  launch/real_robot_nav.launch.py
+  config/planner_params.yaml     all parameters in one place
+  rviz/task1.rviz
+  maps/mapping_1.*               map of the lab
+docs/                            project report and figures
+ros2_network_config.xml          FastDDS profile for talking to the robot over wifi
 ```
 
-## Step 5
+## Requirements
 
-Clone your repository
+- Ubuntu 22.04, ROS 2 Humble
+- `ros-humble-navigation2`, `ros-humble-nav2-bringup`, `ros-humble-slam-toolbox`
+- Python: numpy, scipy
+- The Robile packages from the course (`robile_navigation` etc.) in the same workspace
 
-example:
+## Build
 
 ```bash
-git clone https://github.com/amr-team-<team_name>.git
+cd ~/ros2_ws/src
+git clone https://github.com/annurag133/amr-team-MAH-.git
+cp -r amr-team-MAH-/src/potential_field_planner .
+cd ~/ros2_ws
+colcon build --packages-select potential_field_planner
+source install/setup.bash
 ```
 
-## Finally
+## Running on the robot
 
-Work collaboratively by splitting the tasks among team members and individually push your code to the repository.
+On the robot (over ssh, ideally inside tmux):
 
-## Important Note
+```bash
+ros2 launch robile_bringup robot.launch.py
+```
 
-- Team members work is evaluated based on your commit history, if  we do not see any commits from a team member then we cannot consider their contribution. 
+On the laptop, connected to the Robile wifi:
 
-- You can use issue boards and other tools to create issues and pull requests to manage your work and better showcase collaboration.
+```bash
+export ROS_DOMAIN_ID=3        # our robot, check yours
+source ~/ros2_ws/install/setup.bash
+```
 
-- Make sure you record almost every session because you need a working video to add into the report. Make sure to take screenshots, screenrecords etc to document your work in an effective manner.
+**Parts 1 and 2 – navigation on the saved map with our particle filter**
 
-- The robots in the lab are prone to issues so finish everything on simulation as fast as you can and start testing as soon as you can, do not wait until the last moment.
+```bash
+ros2 launch potential_field_planner real_robot_nav.launch.py
+```
 
-- Make sure to use only one branch to track all of your codes and also do not upload entire folders on to Github, use a gitignore and keep only required files on there.
+RViz opens. Set the robot pose with *2D Pose Estimate* (the laser should line up with the walls), then send a goal with *2D Goal Pose*. To compare with Nav2 AMCL add `localization:=amcl`, to use another map add `map:=/path/to/map.yaml`.
 
-- Write a nice Readme file on how to use the codes and also explain your approach for the tasks and also any challenges you faced, Feel free to modify this file.
+**Part 3 – autonomous exploration**
 
-- Ensure when leaving the lab you charge the robots for next team that is coming or if you are the last team unplug the robot, switch it off and then leave.
+```bash
+ros2 launch potential_field_planner real_robot_nav.launch.py slam:=true explore:=true
+```
 
-- Feel free to post any issues you faced on LEA, always refer to the documentation when in confusion and retrace your steps.
----
+The robot does a slow turn, then drives from frontier to frontier (blue dots in RViz, the current target is the orange sphere). When it is done it prints `Exploration complete` and saves the map to `~/explored_map.yaml`. `ros2 topic echo /exploration_status` shows `EXPLORING` / `COMPLETE`.
 
-# AMR Project
+To stop the robot at any time:
 
-## Project Objectives
+```bash
+ros2 topic pub --once /cancel_goal std_msgs/msg/Empty
+```
 
-The objective of this project is that you deploy some of the functionalities that were discussed during the course on a real robot platform. In particular, we want to have functionalities for path and motion planning, localisation, and environment exploration on the robot.
+## Things we learned the hard way
 
-We will particularly use the Robile platform during the project; you are already familiar with this robot from the simulation you have been using throughout the semester as well as from the few practical lab sessions that we have had.
+- **Clock sync.** If the robot clock is off by even a few seconds, AMCL drops scans and nothing moves. We run chrony on the laptop and point the robot's timesyncd at it.
+- **Laser mounting.** The laser frame on our Robile is flipped. All scan processing goes through the full 3D transform (`scan_utils.py`).
+- **Turn slowly while mapping.** Fast in-place rotations make the odometry slip and slam_toolbox produced a doubled, rotated map. The explorer turns at 0.3 rad/s and the controller at most 0.5 rad/s.
+- **RViz from the VS Code terminal** crashes if VS Code is a snap (libpthread symbol error). Use a normal terminal or unset the snap GTK variables.
 
-## Task Description
+## Parameters
 
-The project consists of three parts that are building on each other: (i) path and motion planning, (ii) localisation, and (iii) environment exploration.
+All tunable values are in `config/planner_params.yaml`. The ones we changed most often:
 
-### 1. Path and Motion Planning
-
-You have already implemented a *potential field planner* in one of your assignments. In this first part of the project, you need to port your implementation to the real robot and ensure that it is working as well as it was in the simulated environment so that you can navigate towards global goals while avoiding obstacles. Then, integrate your potential field planner with a global path planner, namely first use a path planner (e.g. A*) to find a rough global trajectory of waypoints that the robot can follow to reach a goal and then use the potential field planner to navigate between the waypoints. This will make your potential field planner applicable to large environments, where it can navigate given an environment map.
-
-### 2. Localisation
-
-In one of the course lectures, we discussed Monte Carlo localisation as a practical solution to the robot localisation problem in an existing map. In this second part of the project, your objective is to implement your very own particle filter that you then integrate on the Robile. You should implement the simple version of the filter that we discussed in the lecture; however, if you have time and interest, you are free to additionally explore extensions / improvements to the algorithm, for example in the form of the adaptive Monte Carlo approach that we mentioned in the lecture.
-
-### 3. Environment Exploration
-
-The final objective of the project is to incorporate an environment exploration functionality to the robot. This will have to be combined with a SLAM component, namely you will need your exploration component to select poses to explore and a SLAM component that will take care of actually creating a map. The exploration algorithm should ideally select poses at the map fringe (i.e. poses that are at the boundary between the explored and unexplored region), but you are free to explore different pose selection strategies in your implementation.
+| Parameter | Node | Meaning |
+|---|---|---|
+| `robot_radius` | A*, explorer | planning radius (0.30 m, lets the robot through ~0.7 m doors) |
+| `k_rep`, `influence_dist` | potential field | how strongly / from how far obstacles push |
+| `max_lin`, `max_ang` | potential field | speed limits |
+| `num_particles` | MCL | particles while tracking (500) |
+| `info_gain_weight` | explorer | preference for long frontiers over short trips |

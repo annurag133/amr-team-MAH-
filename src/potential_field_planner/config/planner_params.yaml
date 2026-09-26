@@ -66,3 +66,20 @@ mcl_localization:
     odom_frame: odom
     base_frame: base_footprint
     set_initial_pose: true
+
+frontier_explorer:
+  ros__parameters:
+    global_frame: map
+    base_frame: base_link
+    robot_radius: 0.30        # must match astar_global_planner
+    goal_clearance: 0.45      # frontier goals need room to turn in place
+    min_frontier_size: 0.4    # ignore frontiers shorter than this (m)
+    goal_search_radius: 1.0   # goal may be this far from the frontier to be safe
+    info_gain_weight: 2.0     # prefer long frontiers: cost = travel - weight * length
+    min_goal_dist: 0.5
+    blacklist_radius: 0.6     # failed frontiers within this radius are skipped
+    goal_timeout: 90.0
+    replan_period: 5.0        # switch goal if the target frontier got explored meanwhile
+    initial_spin: true        # one slow 360 deg turn before exploring
+    spin_speed: 0.3           # rad/s for the look-around turns
+    save_map: true
