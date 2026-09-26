@@ -14,8 +14,11 @@ def nodes(context):
     arg = lambda n: LaunchConfiguration(n).perform(context)  # noqa: E731
     sim = {'use_sim_time': arg('use_sim_time').lower() == 'true'}
     params = arg('params_file')
+    slam = arg('slam').lower() == 'true'
     loc = {'true': 'amcl', 'false': 'none'}.get(arg('localization').lower(),
                                                 arg('localization').lower())
+    if slam:
+        loc = 'none'  # slam_toolbox provides both the map and map->odom
     if loc not in ('amcl', 'mcl', 'none'):
         raise RuntimeError(f"localization must be amcl, mcl or none (got '{loc}')")
     x, y, yaw = float(arg('x')), float(arg('y')), float(arg('yaw'))
@@ -50,6 +53,24 @@ def nodes(context):
                         parameters=[sim, {'autostart': True, 'bond_timeout': 0.0,
                                           'node_names': managed}]))
 
+    explore = arg('explore').lower() == 'true'
+    if explore and not slam:
+        raise RuntimeError('explore:=true needs slam:=true')
+    if slam:
+        out.append(Node(package='slam_toolbox', executable='async_slam_toolbox_node',
+                        name='slam_toolbox', output='screen',
+                        parameters=[os.path.join(nav_share, 'config',
+                                                 'mapper_params_online_async.yaml'), sim,
+                                    {'map_update_interval': 2.0,
+                                     # add a scan every ~6 deg of turning / 10 cm of travel so
+                                     # consecutive scans overlap enough for scan matching
+                                     'minimum_travel_heading': 0.1,
+                                     'minimum_travel_distance': 0.1}]))
+    if explore:
+        out.append(Node(package='potential_field_planner', executable='frontier_explorer',
+                        name='frontier_explorer', output='screen',
+                        parameters=[params, sim, {'map_save_path': arg('map_save_path')}]))
+
     out += [
         Node(package='potential_field_planner', executable='astar_global_planner',
              name='astar_global_planner', output='screen', parameters=[params, sim]),
@@ -77,6 +98,14 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'localization', default_value='mcl',
             description='amcl (nav2), mcl (our particle filter) or none'),
+        DeclareLaunchArgument(
+            'slam', default_value='false',
+            description='Build the map live with slam_toolbox (overrides localization)'),
+        DeclareLaunchArgument(
+            'explore', default_value='false',
+            description='Autonomous frontier exploration (use with slam:=true)'),
+        DeclareLaunchArgument('map_save_path',
+                              default_value=os.path.expanduser('~/explored_map')),
         DeclareLaunchArgument('x', default_value='0.0', description='Robot start x in map'),
         DeclareLaunchArgument('y', default_value='0.0', description='Robot start y in map'),
         DeclareLaunchArgument('yaw', default_value='0.0', description='Robot start yaw in map'),
