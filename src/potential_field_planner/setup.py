@@ -32,6 +32,7 @@ setup(
             'potential_field = potential_field_planner.potential_field:main',
             'occupancy_grid_mapper = potential_field_planner.occupancy_grid_mapper:main',
             'astar_global_planner = potential_field_planner.astar_global_planner:main',
+            'mcl_localization = potential_field_planner.mcl_localization:main',
         ],
     },
 )
