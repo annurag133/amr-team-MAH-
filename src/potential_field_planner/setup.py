@@ -33,6 +33,7 @@ setup(
             'occupancy_grid_mapper = potential_field_planner.occupancy_grid_mapper:main',
             'astar_global_planner = potential_field_planner.astar_global_planner:main',
             'mcl_localization = potential_field_planner.mcl_localization:main',
+            'frontier_explorer = potential_field_planner.frontier_explorer:main',
         ],
     },
 )
